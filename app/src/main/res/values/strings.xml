@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">牛马助手</string>
+    <string name="timer_notification_title">学习计时进行中</string>
+    <string name="timer_notification_text">当前科目：%1$s</string>
+    <string name="check_in_reminder_title">早安！记得打卡记录今天的坚持</string>
+    <string name="todo_reminder_title">今晚还有待办未完成</string>
+</resources>
