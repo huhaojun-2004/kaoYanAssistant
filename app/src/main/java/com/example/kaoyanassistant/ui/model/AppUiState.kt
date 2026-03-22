@@ -13,6 +13,7 @@ data class AppUiState(
     val todos: List<TodoEntity> = emptyList(),
     val dayRecords: List<DayRecordEntity> = emptyList(),
     val settings: SettingsEntity = SettingsEntity(),
+    val showCountdownBadge: Boolean = true,
     val activeTimer: ActiveTimerEntity? = null,
     val selectedTimerSubjectId: Long? = null,
 ) {

@@ -23,11 +23,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.kaoyanassistant.ui.components.PieSliceEntry
 import com.example.kaoyanassistant.ui.components.StudyPieChart
+import com.example.kaoyanassistant.ui.components.StudyTimeClockSummary
 import com.example.kaoyanassistant.ui.components.TaskDateSelector
 import com.example.kaoyanassistant.ui.components.TaskDateStepMode
 import com.example.kaoyanassistant.ui.model.AppUiState
 import com.example.kaoyanassistant.ui.model.buildDaySubjectSummary
 import com.example.kaoyanassistant.ui.model.buildMonthCategorySummary
+import com.example.kaoyanassistant.ui.model.buildTwentyFourHourClockStudySegments
 import com.example.kaoyanassistant.ui.model.buildWeekCategorySummary
 import com.example.kaoyanassistant.ui.theme.Pine
 import com.example.kaoyanassistant.util.DateTimeUtils
@@ -106,6 +108,19 @@ fun StatisticsScreen(
         StatisticsMode.WEEK -> "当前这一周"
         StatisticsMode.MONTH -> DateTimeUtils.monthLabel(month)
     }
+    val clockSegments = remember(uiState.sessions, rangeStart, rangeEnd) {
+        buildTwentyFourHourClockStudySegments(
+            subjects = uiState.subjects,
+            sessions = uiState.sessions,
+            rangeStart = rangeStart,
+            rangeEnd = rangeEnd,
+        )
+    }
+    val clockSubtitle = when (mode) {
+        StatisticsMode.DAY -> "24 小时钟面；弧线表示你当天学过的时间段。"
+        StatisticsMode.WEEK -> "24 小时钟面；会把本周出现过的学习时段折叠到同一圈里。"
+        StatisticsMode.MONTH -> "24 小时钟面；会把本月出现过的学习时段折叠到同一圈里。"
+    }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
@@ -162,6 +177,14 @@ fun StatisticsScreen(
                 entries = pieEntries,
                 emptyText = emptyText,
                 onDeleteEntry = { entry -> deletingEntry = entry },
+                footer = {
+                    StudyTimeClockSummary(
+                        segments = clockSegments,
+                        legendEntries = pieEntries,
+                        title = "学习时段钟面",
+                        subtitle = clockSubtitle,
+                    )
+                },
             )
         }
     }

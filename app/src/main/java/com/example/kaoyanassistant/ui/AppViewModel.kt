@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
+import androidx.room.withTransaction
 import com.example.kaoyanassistant.KaoYanAssistantApplication
 import com.example.kaoyanassistant.core.AppContainer
 import com.example.kaoyanassistant.data.local.entity.ActiveTimerEntity
@@ -18,12 +19,16 @@ import com.example.kaoyanassistant.data.local.entity.TodoEntity
 import com.example.kaoyanassistant.service.StudyTimerService
 import com.example.kaoyanassistant.ui.model.AppUiState
 import com.example.kaoyanassistant.ui.model.totalStudyForSubjectOnDate
+import com.example.kaoyanassistant.util.AppBackupPayload
+import com.example.kaoyanassistant.util.AppBackupSerializer
 import com.example.kaoyanassistant.util.DateTimeUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AppViewModel(
     application: Application,
@@ -37,6 +42,7 @@ class AppViewModel(
         container.todoRepository.todos,
         container.checkInRepository.dayRecords,
         container.settingsRepository.settings,
+        container.uiPreferencesRepository.showCountdownBadge,
         container.studyRepository.activeTimer,
         selectedTimerSubjectId,
     ) { values ->
@@ -47,8 +53,9 @@ class AppViewModel(
             todos = values[2] as List<TodoEntity>,
             dayRecords = values[3] as List<DayRecordEntity>,
             settings = values[4] as SettingsEntity,
-            activeTimer = values[5] as ActiveTimerEntity?,
-            selectedTimerSubjectId = values[6] as Long?,
+            showCountdownBadge = values[5] as Boolean,
+            activeTimer = values[6] as ActiveTimerEntity?,
+            selectedTimerSubjectId = values[7] as Long?,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -173,6 +180,24 @@ class AppViewModel(
         }
     }
 
+    fun setShowCountdownBadge(show: Boolean) {
+        container.uiPreferencesRepository.setShowCountdownBadge(show)
+    }
+
+    fun buildBackupJson(): String {
+        return AppBackupSerializer.build(uiState.value)
+    }
+
+    suspend fun importBackupJson(json: String): Result<Unit> {
+        stopTimerService()
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val payload = AppBackupSerializer.parse(json)
+                restoreBackupPayload(payload)
+            }
+        }
+    }
+
     private fun startTimerService(subjectName: String, startedAt: Long, carriedMillis: Long) {
         val context = getApplication<Application>()
         val intent = Intent(context, StudyTimerService::class.java)
@@ -201,6 +226,38 @@ class AppViewModel(
             cursor = cursor.parentId?.let(subjectMap::get)
         }
         return false
+    }
+
+    private suspend fun restoreBackupPayload(payload: AppBackupPayload) {
+        container.database.withTransaction {
+            container.database.activeTimerDao().clear()
+            container.database.studySessionDao().clearAll()
+            container.database.todoDao().clearAll()
+            container.database.dayRecordDao().clearAll()
+            container.database.subjectDao().clearAll()
+
+            val orderedSubjects = payload.subjects.sortedWith(
+                compareBy<SubjectEntity> { it.parentId != null }
+                    .thenBy(SubjectEntity::sortOrder)
+                    .thenBy(SubjectEntity::id),
+            )
+            if (orderedSubjects.isNotEmpty()) {
+                container.database.subjectDao().insertAll(orderedSubjects)
+            }
+            if (payload.sessions.isNotEmpty()) {
+                container.database.studySessionDao().insertAll(payload.sessions.sortedBy(StudySessionEntity::startTime))
+            }
+            if (payload.todos.isNotEmpty()) {
+                container.database.todoDao().insertAll(payload.todos.sortedBy(TodoEntity::id))
+            }
+            if (payload.dayRecords.isNotEmpty()) {
+                container.database.dayRecordDao().insertAll(payload.dayRecords.sortedBy(DayRecordEntity::date))
+            }
+            container.database.settingsDao().insert(payload.settings.copy(id = 1))
+        }
+
+        container.uiPreferencesRepository.setShowCountdownBadge(payload.showCountdownBadge)
+        container.reminderScheduler.rescheduleAll(payload.settings.copy(id = 1))
     }
 
     companion object {

@@ -7,10 +7,13 @@ import com.example.kaoyanassistant.data.local.entity.TodoEntity
 import com.example.kaoyanassistant.util.DateTimeUtils
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.temporal.TemporalAdjusters
 import kotlin.math.max
 import kotlin.math.min
+
+private const val DAY_MILLIS = 24 * 60 * 60 * 1000L
 
 data class SubjectTreeNode(
     val subject: SubjectEntity,
@@ -42,6 +45,14 @@ data class DailyTimelineItem(
     val startTime: Long,
     val endTime: Long,
     val durationMillis: Long,
+)
+
+data class ClockStudySegment(
+    val subjectId: Long,
+    val subjectName: String,
+    val colorValue: Long,
+    val startMillisWithinCycle: Long,
+    val endMillisWithinCycle: Long,
 )
 
 fun buildSubjectTree(subjects: List<SubjectEntity>): List<SubjectTreeNode> {
@@ -270,6 +281,97 @@ fun currentStreak(records: List<DayRecordEntity>): Int {
         }
     }
     return streak
+}
+
+fun buildTwentyFourHourClockStudySegments(
+    subjects: List<SubjectEntity>,
+    sessions: List<StudySessionEntity>,
+    rangeStart: Long,
+    rangeEnd: Long,
+): List<ClockStudySegment> {
+    if (rangeEnd <= rangeStart) return emptyList()
+    val subjectMap = subjects.associateBy { it.id }
+
+    data class RawSegment(
+        val subjectId: Long,
+        val subjectName: String,
+        val colorValue: Long,
+        val start: Long,
+        val end: Long,
+    )
+
+    val rawSegments = buildList {
+        sessions.forEach { session ->
+            val subject = subjectMap[session.subjectId] ?: return@forEach
+            val clippedStart = max(session.startTime, rangeStart)
+            val clippedEnd = min(session.endTime, rangeEnd)
+            if (clippedEnd <= clippedStart) return@forEach
+
+            var current = DateTimeUtils.toLocalDateTime(clippedStart)
+            val end = DateTimeUtils.toLocalDateTime(clippedEnd)
+            while (current.isBefore(end)) {
+                val boundary = nextDayBoundary(current)
+                val segmentEnd = if (boundary.isBefore(end)) boundary else end
+                val startOffset = millisWithinDay(current)
+                val endOffset = if (segmentEnd == boundary) {
+                    DAY_MILLIS
+                } else {
+                    millisWithinDay(segmentEnd)
+                }
+                if (endOffset > startOffset) {
+                    add(
+                        RawSegment(
+                            subjectId = subject.id,
+                            subjectName = subject.name,
+                            colorValue = subject.colorValue,
+                            start = startOffset,
+                            end = endOffset,
+                        ),
+                    )
+                }
+                current = segmentEnd
+            }
+        }
+    }.sortedWith(
+        compareBy<RawSegment>(RawSegment::subjectId)
+            .thenBy(RawSegment::start),
+    )
+
+    if (rawSegments.isEmpty()) return emptyList()
+
+    val merged = mutableListOf<RawSegment>()
+    rawSegments.forEach { segment ->
+        val last = merged.lastOrNull()
+        if (
+            last == null ||
+            segment.subjectId != last.subjectId ||
+            segment.start > last.end
+        ) {
+            merged += segment
+        } else {
+            merged[merged.lastIndex] = last.copy(end = max(last.end, segment.end))
+        }
+    }
+
+    return merged.map { segment ->
+        ClockStudySegment(
+            subjectId = segment.subjectId,
+            subjectName = segment.subjectName,
+            colorValue = segment.colorValue,
+            startMillisWithinCycle = segment.start,
+            endMillisWithinCycle = segment.end,
+        )
+    }
+}
+
+private fun nextDayBoundary(dateTime: LocalDateTime): LocalDateTime {
+    return dateTime.toLocalDate().plusDays(1).atStartOfDay()
+}
+
+private fun millisWithinDay(dateTime: LocalDateTime): Long {
+    val time = dateTime.toLocalTime()
+    val millisSinceMidnight = time.toSecondOfDay() * 1_000L + time.nano / 1_000_000L
+    return millisSinceMidnight % DAY_MILLIS
 }
 
 fun startOfCurrentWeek(): LocalDate {

@@ -15,6 +15,12 @@ interface DayRecordDao {
     @Query("SELECT * FROM day_records WHERE date = :date LIMIT 1")
     suspend fun getByDate(date: String): DayRecordEntity?
 
+    @Query("DELETE FROM day_records")
+    suspend fun clearAll()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(record: DayRecordEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(records: List<DayRecordEntity>)
 }

@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -29,10 +30,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,6 +65,7 @@ import com.example.kaoyanassistant.ui.theme.Paper
 import com.example.kaoyanassistant.ui.theme.Pine
 import com.example.kaoyanassistant.ui.theme.PineDark
 import com.example.kaoyanassistant.util.DateTimeUtils
+import kotlinx.coroutines.launch
 
 private sealed interface SecondaryScreen {
     val route: String
@@ -85,8 +90,12 @@ private sealed interface SecondaryScreen {
 @Composable
 fun KaoYanAssistantApp(
     viewModel: AppViewModel,
+    externalBackupCandidate: ExternalBackupCandidate? = null,
+    onDismissExternalBackup: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var selectedTopLevelRoute by rememberSaveable { mutableStateOf(AppRoutes.TIMER) }
     var secondaryScreen by remember { mutableStateOf<SecondaryScreen?>(null) }
     val currentRoute = secondaryScreen?.route ?: selectedTopLevelRoute
@@ -110,10 +119,12 @@ fun KaoYanAssistantApp(
                 title = { Text(text = titleForRoute(currentRoute)) },
                 navigationIcon = {
                     if (isTopLevel) {
-                        CountdownBadge(
-                            daysLeft = daysUntilExam,
-                            modifier = Modifier.padding(start = 12.dp),
-                        )
+                        if (uiState.showCountdownBadge) {
+                            CountdownBadge(
+                                daysLeft = daysUntilExam,
+                                modifier = Modifier.padding(start = 12.dp),
+                            )
+                        }
                     } else {
                         IconButton(onClick = { secondaryScreen = null }) {
                             Icon(
@@ -268,12 +279,16 @@ fun KaoYanAssistantApp(
                 is SecondaryScreen.Settings -> {
                     SettingsScreen(
                         settings = uiState.settings,
+                        showCountdownBadge = uiState.showCountdownBadge,
+                        onShowCountdownChange = viewModel::setShowCountdownBadge,
                         onSave = viewModel::saveSettings,
                         onRequestPermission = {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             }
                         },
+                        buildBackupJson = viewModel::buildBackupJson,
+                        importBackupJson = viewModel::importBackupJson,
                     )
                 }
 
@@ -297,6 +312,50 @@ fun KaoYanAssistantApp(
                 }
             }
         }
+    }
+
+    externalBackupCandidate?.let { candidate ->
+        AlertDialog(
+            onDismissRequest = onDismissExternalBackup,
+            title = { Text("导入外部备份") },
+            text = {
+                Text(
+                    text = buildString {
+                        append("检测到备份文件：${candidate.sourceName}\n")
+                        append("科目 ${candidate.payload.subjects.size} 条，")
+                        append("学习记录 ${candidate.payload.sessions.size} 条，")
+                        append("待办 ${candidate.payload.todos.size} 条，")
+                        append("打卡记录 ${candidate.payload.dayRecords.size} 条。\n")
+                        append("确认导入并覆盖当前本地数据吗？")
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            val result = viewModel.importBackupJson(candidate.json)
+                            android.widget.Toast.makeText(
+                                context,
+                                result.fold(
+                                    onSuccess = { "备份已导入" },
+                                    onFailure = { "导入失败：${it.message ?: "未知错误"}" },
+                                ),
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                            onDismissExternalBackup()
+                        }
+                    },
+                ) {
+                    Text("导入")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissExternalBackup) {
+                    Text("取消")
+                }
+            },
+        )
     }
 }
 

@@ -23,6 +23,9 @@ interface SubjectDao {
     @Query("SELECT * FROM subjects")
     suspend fun getAll(): List<SubjectEntity>
 
+    @Query("DELETE FROM subjects")
+    suspend fun clearAll()
+
     @Query(
         """
         SELECT COALESCE(MAX(sortOrder), -1)

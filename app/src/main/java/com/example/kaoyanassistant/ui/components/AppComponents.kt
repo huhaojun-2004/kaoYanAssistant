@@ -8,14 +8,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.absoluteOffset
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -24,6 +27,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -31,13 +35,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
+import com.example.kaoyanassistant.ui.model.ClockStudySegment
 import com.example.kaoyanassistant.ui.theme.Cloud
 import com.example.kaoyanassistant.ui.theme.Paper
 import com.example.kaoyanassistant.ui.theme.Pine
@@ -197,6 +205,7 @@ fun StudyPieChart(
     modifier: Modifier = Modifier,
     emptyText: String = "暂无统计数据",
     onDeleteEntry: ((PieSliceEntry) -> Unit)? = null,
+    footer: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     if (entries.isEmpty()) {
         EmptyStateCard(text = emptyText, modifier = modifier)
@@ -262,7 +271,243 @@ fun StudyPieChart(
                     }
                 }
             }
+
+            footer?.let {
+                HorizontalDivider(color = Cloud)
+                it()
+            }
         }
+    }
+}
+
+private const val DAY_CLOCK_MILLIS = 24 * 60 * 60 * 1000L
+
+@Composable
+fun StudyTimeClockSummary(
+    segments: List<ClockStudySegment>,
+    legendEntries: List<PieSliceEntry>,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+            )
+        }
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            TwentyFourHourStudyClock(segments = segments)
+        }
+        ClockLegend(entries = legendEntries)
+    }
+}
+
+@Composable
+private fun TwentyFourHourStudyClock(
+    segments: List<ClockStudySegment>,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.size(252.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val faceRadius = size.minDimension * 0.205f
+            val studyRingRadius = size.minDimension * 0.412f
+            val studyStroke = size.minDimension * 0.045f
+            val tickOuterRadius = size.minDimension * 0.285f
+            val majorTickInnerRadius = size.minDimension * 0.235f
+            val minorTickInnerRadius = size.minDimension * 0.255f
+
+            drawCircle(
+                color = Pine.copy(alpha = 0.05f),
+                radius = studyRingRadius + studyStroke * 0.95f,
+            )
+            drawCircle(
+                color = Paper,
+                radius = studyRingRadius + studyStroke * 0.55f,
+            )
+
+            drawCircle(
+                color = Cloud.copy(alpha = 0.94f),
+                radius = studyRingRadius,
+                style = Stroke(width = studyStroke),
+            )
+
+            segments.forEach { segment ->
+                val sweepMillis = segment.endMillisWithinCycle - segment.startMillisWithinCycle
+                if (sweepMillis <= 0L) return@forEach
+                val segmentColor = Color(segment.colorValue)
+                val arcTopLeft = Offset(center.x - studyRingRadius, center.y - studyRingRadius)
+                val arcSize = Size(studyRingRadius * 2f, studyRingRadius * 2f)
+                drawArc(
+                    color = Paper,
+                    startAngle = -90f + segment.startMillisWithinCycle.toFloat() / DAY_CLOCK_MILLIS * 360f,
+                    sweepAngle = sweepMillis.toFloat() / DAY_CLOCK_MILLIS * 360f,
+                    useCenter = false,
+                    topLeft = arcTopLeft,
+                    size = arcSize,
+                    style = Stroke(width = studyStroke + 6f, cap = StrokeCap.Round),
+                )
+                drawArc(
+                    color = segmentColor,
+                    startAngle = -90f + segment.startMillisWithinCycle.toFloat() / DAY_CLOCK_MILLIS * 360f,
+                    sweepAngle = sweepMillis.toFloat() / DAY_CLOCK_MILLIS * 360f,
+                    useCenter = false,
+                    topLeft = arcTopLeft,
+                    size = arcSize,
+                    style = Stroke(width = studyStroke, cap = StrokeCap.Round),
+                )
+            }
+
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color.White,
+                        Pine.copy(alpha = 0.12f),
+                    ),
+                    center = center,
+                    radius = faceRadius * 1.25f,
+                ),
+                radius = faceRadius,
+            )
+            drawCircle(
+                color = Color.White.copy(alpha = 0.95f),
+                radius = faceRadius * 0.66f,
+            )
+
+            repeat(48) { tick ->
+                val angle = Math.toRadians((tick * 7.5f - 90f).toDouble())
+                val outer = Offset(
+                    x = center.x + cos(angle).toFloat() * tickOuterRadius,
+                    y = center.y + sin(angle).toFloat() * tickOuterRadius,
+                )
+                val innerRadius = if (tick % 2 == 0) majorTickInnerRadius else minorTickInnerRadius
+                val inner = Offset(
+                    x = center.x + cos(angle).toFloat() * innerRadius,
+                    y = center.y + sin(angle).toFloat() * innerRadius,
+                )
+                drawLine(
+                    color = Pine.copy(alpha = if (tick % 2 == 0) 0.54f else 0.2f),
+                    start = inner,
+                    end = outer,
+                    strokeWidth = if (tick % 2 == 0) 3.6f else 1.8f,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            drawCircle(
+                color = Pine.copy(alpha = 0.18f),
+                radius = size.minDimension * 0.03f,
+            )
+            drawCircle(
+                color = Pine.copy(alpha = 0.92f),
+                radius = size.minDimension * 0.012f,
+            )
+        }
+
+        val markerRadius = 80.dp
+        (0 until 24).forEach { hour ->
+            val angle = Math.toRadians((hour * 15f - 90f).toDouble())
+            ClockMarker(
+                text = hour.toString(),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(
+                        x = (cos(angle).toFloat() * markerRadius.value).dp,
+                        y = (sin(angle).toFloat() * markerRadius.value).dp,
+                    ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ClockMarker(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = text,
+        modifier = modifier,
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 9.sp,
+        color = Slate.copy(alpha = 0.78f),
+    )
+}
+
+@Composable
+private fun ClockLegend(
+    entries: List<PieSliceEntry>,
+    modifier: Modifier = Modifier,
+) {
+    if (entries.isEmpty()) return
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "时段图例",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+        )
+        entries
+            .sortedByDescending { it.value }
+            .chunked(2)
+            .forEach { rowEntries ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    rowEntries.forEach { entry ->
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Cloud.copy(alpha = 0.88f),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .background(entry.color, RoundedCornerShape(999.dp)),
+                                )
+                                Text(
+                                    text = entry.label,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                    repeat(2 - rowEntries.size) {
+                        Box(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
     }
 }
 

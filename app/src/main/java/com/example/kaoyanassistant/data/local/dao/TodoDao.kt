@@ -20,6 +20,9 @@ interface TodoDao {
     @Query("SELECT * FROM todos")
     suspend fun getAll(): List<TodoEntity>
 
+    @Query("DELETE FROM todos")
+    suspend fun clearAll()
+
     @Query("SELECT COUNT(*) FROM todos WHERE isCompleted = 0")
     suspend fun getIncompleteCount(): Int
 
@@ -28,6 +31,9 @@ interface TodoDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(todo: TodoEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(todos: List<TodoEntity>): List<Long>
 
     @Update
     suspend fun update(todo: TodoEntity)

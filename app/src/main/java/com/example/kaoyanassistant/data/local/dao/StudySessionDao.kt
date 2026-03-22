@@ -38,6 +38,9 @@ interface StudySessionDao {
         rangeEnd: Long,
     ): List<StudySessionEntity>
 
+    @Query("DELETE FROM study_sessions")
+    suspend fun clearAll()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(session: StudySessionEntity): Long
 

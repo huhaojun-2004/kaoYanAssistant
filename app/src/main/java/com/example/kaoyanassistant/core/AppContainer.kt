@@ -7,6 +7,7 @@ import com.example.kaoyanassistant.data.repository.SettingsRepository
 import com.example.kaoyanassistant.data.repository.StudyRepository
 import com.example.kaoyanassistant.data.repository.SubjectRepository
 import com.example.kaoyanassistant.data.repository.TodoRepository
+import com.example.kaoyanassistant.data.repository.UiPreferencesRepository
 import com.example.kaoyanassistant.notification.NotificationHelper
 import com.example.kaoyanassistant.notification.ReminderScheduler
 import kotlinx.coroutines.CoroutineScope
@@ -43,6 +44,10 @@ class AppContainer(
 
     val settingsRepository: SettingsRepository by lazy {
         SettingsRepository(database.settingsDao())
+    }
+
+    val uiPreferencesRepository: UiPreferencesRepository by lazy {
+        UiPreferencesRepository(appContext)
     }
 
     val notificationHelper: NotificationHelper by lazy {
